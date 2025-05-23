@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <string>
 using std::string;
+
 class Person
 {
 private:

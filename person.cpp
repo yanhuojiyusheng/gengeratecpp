@@ -1,17 +1,10 @@
-#include "person.h"
+#include ".\person.h"
 
-void Person::Show() const {
-    // TODO: Implement
+void Person::Show() const{
 }
-void Gunslinger::Show() const {
-    // TODO: Implement
+void Gunslinger::Show() const{
 }
- PokerPlayer::Card() {
-    // TODO: Implement
+void PokerPlayer::Show() const{
 }
-void PokerPlayer::Show() const {
-    // TODO: Implement
-}
-void BadDude::Show() const {
-    // TODO: Implement
+void BadDude::Show() const{
 }

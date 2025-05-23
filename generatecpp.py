@@ -1,21 +1,68 @@
 #!/usr/bin/env python3
 import re
 import sys
-
+def remove_default_args(param_string):
+    # 去除首尾括号
+    if param_string.startswith('(') and param_string.endswith(')'):
+        param_string = param_string[1:-1]
+    
+    params = []
+    current_param = []
+    depth = 0  # 括号深度
+    
+    for char in param_string:
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+        elif char == ',' and depth == 0:
+            # 遇到参数分隔符
+            params.append(''.join(current_param).strip())
+            current_param = []
+            continue
+        
+        current_param.append(char)
+    
+    # 添加最后一个参数
+    if current_param:
+        params.append(''.join(current_param).strip())
+    
+    # 处理每个参数，移除默认值
+    cleaned_params = []
+    for param in params:
+        # 查找等号（不在括号内的）
+        depth = 0
+        eq_index = -1
+        for i, c in enumerate(param):
+            if c == '(':
+                depth += 1
+            elif c == ')':
+                depth -= 1
+            elif c == '=' and depth == 0:
+                eq_index = i
+                break
+        
+        if eq_index != -1:
+            # 移除等号及其后的内容
+            cleaned_params.append(param[:eq_index].rstrip())
+        else:
+            cleaned_params.append(param)
+    
+    # 重新组合参数列表
+    return '(' + ', '.join(cleaned_params) + ')'
 def process_class(content):
     # class_match = re.search(r'class\s+(\w+)(?:\s*:\s*(?:virtual\s+)?(?:public\s+)?\w+(?:\s*,\s*(?:virtual\s+)?(?:public\s+)?\w+)*)?', content)
     # 匹配需要生成定义的类名
-    class_match = re.search(r'(?<!\w)(?<!friend\s)class\s+(\w+)\s*(?:final)?\s*(?::\s*(?:(?:(?:virtual|public|protected|private)\s*)*\w+)(?:\s*,\s*(?:(?:virtual|public|protected|private)\s*)*\w+)*)?\s*{', content)
+    class_match = re.search(r'(?<!friend)\s*class\s+(\w+)\s*(?:final)?\s*(?::\s*(?:(?:(?:virtual|public|protected|private)\s*)*\w+)(?:\s*,\s*(?:(?:virtual|public|protected|private)\s*)*\w+)*)?\s*({)', content)
+    
     if not class_match:
         return None, content
+    class_start = class_match.start()
+    brace_start = class_match.start(2)
     class_name = class_match.group(1)
-    class_start = re.search(rf'class\s+{class_name}\s*(?::\s*(?:virtual\s+)?(?:public\s+)?\w+(?:\s*,\s*(?:virtual\s+)?(?:public\s+)?\w+)*)?\s*{{', content)
-    if not class_start:
-        print(f"Error: Could not find class definition start for {class_name}")
-        return None, content
-    start_pos = class_start.end() - 1
+
     brace_count = 1
-    i = start_pos + 1
+    i = brace_start + 1
     while i < len(content) and brace_count > 0:
         if content[i] == '{':
             brace_count += 1
@@ -25,58 +72,89 @@ def process_class(content):
     if brace_count != 0:
         print(f"Error: Mismatched braces in class {class_name}")
         return None, content
-    class_content = content[start_pos:i]
-    remaining_content = content[i:]
-    class_content = re.sub(r'^\s*(public|private|protected):\s*', '', class_content, flags=re.MULTILINE)
-    func_pattern = r'(virtual\s+)?([\w:&<>]+\s*[\*&]?\s*)?(operator[\w<>=!+\-*]+)?\s*(\w+)?\s*\(\s*([^)]*)\s*\)\s*(const)?\s*(?:override)?\s*(?:=\s*0)?\s*;'
-    functions = re.findall(func_pattern, class_content, re.MULTILINE)
+    brace_end = i
+    class_content = content[brace_start:brace_end]
+    remaining_content = content[:class_start]+content[brace_end:]
     definitions = []
-    for func in functions:
-        virtual, return_type, op_name, func_name, params, const = func
-        # 确保匹配到有效的函数名
-        if not func_name and not op_name:
+    # 处理构造函数
+    while True:
+        construct_match= re.search(rf'(?:explicit\s*)?(\~?{class_name})\s*(\(.*?\))([^{{]*?);',class_content)
+        if not construct_match:
+            break
+        construct_pos = construct_match.span()
+        class_content = class_content[:construct_pos[0]]+class_content[construct_pos[1]:]
+
+        construct_name = construct_match.group(1)
+        construct_parameter = construct_match.group(2)
+        construct_suf = construct_match.group(3)
+        if re.search('defaule\s+',construct_suf) or re.search('delete\s+',construct_suf):
             continue
-        # 跳过构造函数和析构函数
-        if func_name == class_name or (func_name and func_name.startswith('~')):
-            continue
-        # 清理参数列表，去除默认值
-        cleaned_params = []
-        for p in params.split(','):
-            p = p.strip()
-            if p:
-                p = re.sub(r'\s*=\s*[^,)]+', '', p)
-                cleaned_params.append(p)
-        params = ', '.join(cleaned_params)
-        # 处理返回类型
-        return_type = return_type.strip() if return_type else ''
-        if return_type.startswith('virtual '):
-            return_type = return_type[len('virtual '):].strip()
-        const = ' const' if const else ''
-        # 处理操作符重载
-        if op_name:
-            func_name = f'operator{op_name[len("operator"):]}'
-        # 生成函数定义
-        func_def = f"{return_type} {class_name}::{func_name}({params}){const} {{\n    // TODO: Implement\n}}\n"
-        definitions.append(func_def)
+        construct_parameter = remove_default_args(construct_parameter)
+        construct = f"{class_name}::"+construct_name+construct_parameter+construct_suf
+        construct = re.sub(r'\s+', ' ', construct).strip()
+        definitions.append(construct+"{\n}\n")
+    
+    # 处理所有的运算符重载函数
+    while True:
+        operate_match = re.search('([\w*&: ]+\s*)(\s+operator\s*(?:[\w+\-*\/%^&|!~,=<>()[\]{} ]+)\s*)(\(.*?\))([^{]*?);',class_content)
+        if not operate_match:
+            break
+        operate_pos = operate_match.span()
+        class_content = class_content[:operate_pos[0]]+class_content[operate_pos[1]:]
+        operate_return = operate_match.group(1)
+        operate_name = operate_match.group(2).strip()
+        operate_param = operate_match.group(3)
+        operate_suf = operate_match.group(4)
+        if not re.search(r'friend\s+',operate_return):
+            operate_name = f" {class_name}::"+operate_name
+        else:
+            operate_return = re.sub(r'friend\s+','',operate_return)
+        operate_param =remove_default_args(operate_param)
+        operator = operate_return+operate_name+operate_param+operate_suf
+        operator = re.sub(r'\s+', ' ', operator).strip()
+        definitions.append(operator+"{\n}\n")
+    
+    # 处理所有普通函数
+    while True:
+        func_match = re.search(r'([\w*& :]+)(\s+\w+\s*)(\([^{]*?\))([^{]*?);',class_content)
+        if not func_match:
+            break
+        func_pos = func_match.span()
+        class_content = class_content[:func_pos[0]]+class_content[func_pos[1]:]
+        func_return = func_match.group(1)
+        func_name = func_match.group(2).strip()
+        func_param = func_match.group(3)
+        func_suf = func_match.group(4)
+        if not re.search(r'friend\s+',func_return):
+            func_name = f' {class_name}::'+func_name
+        else:
+            func_return = re.sub(r'friend\s+','',func_return)
+        func_param = remove_default_args(func_param)
+        func = func_return+func_name+func_param+func_suf
+        func = re.sub(r'\s+',' ',func).strip()
+        parts = func.split(' ')
+        parts = [s for s in parts if s != 'virtual' and s!= 'override' and s!= 'static']
+        func = ' '.join(parts)
+        definitions.append(func+"{\n}\n")
+    
     return definitions, remaining_content
 
 def process_global_functions(content):
-    global_func_pattern = r'^\s*(?!class|struct)(\w+\s+)+(\w+)(\s*\(\s*[^;]*\s*\))\s*;'
-    matches = re.finditer(global_func_pattern, content, re.MULTILINE)
-    definitions = []
-    for match in matches:
-        return_type = match.group(1).strip()
-        func_name = match.group(2).strip()
-        params = match.group(3).strip()
-        cleaned_params = []
-        for p in params[1:-1].split(','):
-            p = p.strip()
-            if p:
-                p = re.sub(r'\s*=\s*[^,)]+', '', p)
-                cleaned_params.append(p)
-        params = ', '.join(cleaned_params)
-        func_def = f"{return_type} {func_name}({params}) {{\n    // TODO: Implement\n}}\n"
-        definitions.append(func_def)
+    definitions=[]
+    while True:
+        func_match = re.search(r'([\w*& :]+)(\s+\w+\s*)(\([^{]*?\))([^{]*?);',content)
+        if not func_match:
+            break;
+        func_pos = func_match.span()
+        content = content[:func_pos(0)]+content[func_pos(1):]
+        func_return = func_match.group(1).strip()
+        func_name = func_match.group(2).strip()
+        func_param = func_match.group(3).strip()
+        func_suf = func_match.group(4).strip()
+        func_param = remove_default_args(func_param)
+        func = func_return+' '+func_name+' '+func_param+' '+func_suf
+        func = re.sub(r'\s+',' ',func).strip()
+        definitions.append(func+"{\n}\n")
     return definitions
 
 def process_header(input_file, output_file):
@@ -87,6 +165,11 @@ def process_header(input_file, output_file):
         print(f"Error: Could not read file {input_file}: {e}")
         sys.exit(1)
     function_definitions = []
+    # 移除所有注释
+    # 单行注释
+    content = re.sub(r'\/\/.*?(?=\n)','',content) # 处理不了字符串中包含//的情况
+    # 多行注释
+    content = re.sub(r'\/\*.*?\*\/','',content,flags=re.DOTALL)
     while True:
         defs, content = process_class(content)
         if defs is None:
