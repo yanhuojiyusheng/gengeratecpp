@@ -76,6 +76,10 @@ def process_class(content):
     class_content = content[brace_start:brace_end]
     remaining_content = content[:class_start]+content[brace_end:]
     definitions = []
+    # 删除所有的访问修饰符
+    class_content = re.sub(r'public\s*:',' ',class_content)
+    class_content = re.sub(r'private\s*:',' ',class_content)
+    class_content = re.sub(r'protected\s*:',' ',class_content)
     # 处理构造函数
     while True:
         construct_match= re.search(rf'(?:explicit\s*)?(\~?{class_name})\s*(\(.*?\))([^{{]*?);',class_content)

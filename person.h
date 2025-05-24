@@ -21,7 +21,7 @@ class Gunslinger : virtual public Person
 private:
     double time;
     int notch;
-
+protected   :
 public:
     Gunslinger(const char* f, const char* s, double t = 0.0, int n = 0)
         : Person(f, s), time(t), notch(n)                      
