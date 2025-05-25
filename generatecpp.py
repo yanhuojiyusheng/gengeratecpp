@@ -100,7 +100,7 @@ def process_class(content):
     
     # 处理所有的运算符重载函数
     while True:
-        operate_match = re.search('([\w*&: ]+\s*)(\s+operator\s*(?:[\w+\-*\/%^&|!~,=<>()[\]{} ]+)\s*)(\(.*?\))([^{]*?);',class_content)
+        operate_match = re.search('([\w*&: ]+\s*)(operator\s*(?:[\w+\-*\/%^&|!~,=<>()[\]{} ]+)\s*)(\(.*?\))([^{]*?);',class_content)
         if not operate_match:
             break
         operate_pos = operate_match.span()
